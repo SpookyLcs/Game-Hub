@@ -102,62 +102,257 @@ async function open3D(id){
 function close3D(){if(threeGame)threeGame.stop();$("#gameModal").classList.add("hidden");document.body.style.overflow=""}
 
 function createObby(THREE,mount){
-  const scene=new THREE.Scene();scene.background=new THREE.Color("#87d8ff");scene.fog=new THREE.Fog("#87d8ff",32,105);
-  const camera=new THREE.PerspectiveCamera(60,1,.1,180);camera.position.set(0,7,12);
-  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;mount.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight(0xc8efff,0x405070,2));const sun=new THREE.DirectionalLight(0xffffff,2.5);sun.position.set(-8,18,10);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);scene.add(sun);
-  const mat=(color,extra={})=>new THREE.MeshStandardMaterial({color,roughness:.75,...extra});
-  const platformMats=["#18b9ed","#8855ee","#ffb52e","#38d98b","#f15eaa","#3e7bfa"].map(c=>mat(c));
-  const box=(w,h,d,material,x,y,z,shadows=true)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);mesh.position.set(x,y,z);mesh.castShadow=shadows;mesh.receiveShadow=true;scene.add(mesh);return mesh};
-  // Soft, bright sky islands with a clear path through the obby.
-  const platforms=[{x:0,y:0,z:0,w:6,d:6},{x:3,y:.7,z:-6,w:3.3,d:3.2},{x:-1,y:1.5,z:-12,w:3.1,d:3.1},{x:-4,y:2.3,z:-18,w:3.2,d:3.2},{x:0,y:3.1,z:-24,w:3.2,d:3.2},{x:4,y:3.9,z:-30,w:5,d:5,finish:true}];
-  platforms.forEach((p,i)=>{box(p.w,.55,p.d,platformMats[i%platformMats.length],p.x,p.y,p.z);box(p.w*.9,.18,p.d*.9,mat("#ffffff",{transparent:true,opacity:.13}),p.x,p.y+.36,p.z,false);if(p.finish){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.15,.13,12,40),mat("#ffe66b",{emissive:"#c47a00",emissiveIntensity:.7}));ring.position.set(p.x,p.y+1.5,p.z);scene.add(ring);ring.rotation.x=Math.PI/2;}});
-  // Decorative floating clouds and distant islands.
-  for(let i=0;i<24;i++){const x=Math.sin(i*7.3)*25,z=-i*2.5-5,y=4+Math.abs(Math.cos(i*2.2))*10;const cloud=new THREE.Mesh(new THREE.SphereGeometry(.65+Math.random()*.6,8,8),mat("#ffffff"));cloud.position.set(x,y,z);scene.add(cloud)}
-  for(let i=0;i<8;i++){const x=(i%2?1:-1)*(10+Math.random()*9),z=-i*5-4;box(3,.6,3,mat(i%2?"#4fc78b":"#6ca9e9"),x,-1,z,false)}
-  // Simple blocky avatar.
-  const avatar=new THREE.Group();const skin=mat("#f3b780"),shirt=mat("#1d9eff"),pants=mat("#263b62"),hair=mat("#5a2c19");
-  const torso=new THREE.Mesh(new THREE.BoxGeometry(.85,1,.48),shirt);torso.position.y=1.35;torso.castShadow=true;avatar.add(torso);
-  const head=new THREE.Mesh(new THREE.BoxGeometry(.65,.65,.62),skin);head.position.y=2.2;head.castShadow=true;avatar.add(head);
-  const hairMesh=new THREE.Mesh(new THREE.BoxGeometry(.69,.22,.66),hair);hairMesh.position.set(0,2.57,-.01);avatar.add(hairMesh);
-  for(const side of [-1,1]){const leg=new THREE.Mesh(new THREE.BoxGeometry(.31,.72,.36),pants);leg.position.set(side*.23,.5,0);leg.castShadow=true;avatar.add(leg);const arm=new THREE.Mesh(new THREE.BoxGeometry(.26,.78,.3),skin);arm.position.set(side*.59,1.38,0);arm.rotation.z=side*-.12;avatar.add(arm)}
-  const eyeM=mat("#172b40");for(const x of [-.15,.15]){const eye=new THREE.Mesh(new THREE.BoxGeometry(.07,.08,.035),eyeM);eye.position.set(x,2.25,.326);avatar.add(eye)}
-  scene.add(avatar);
-  let running=false,raf=0,last=0,elapsed=0,stars=0,checkpoint=0,camFollow=true,vy=0,onGround=false,finished=false;
-  const state={x:0,y:.3,z:1.4};const keys={};const starMeshes=[];
-  for(let i=0;i<5;i++){const geo=new THREE.OctahedronGeometry(.38);const m=new THREE.Mesh(geo,mat("#ffdb4b",{emissive:"#9e6900",emissiveIntensity:.65}));const p=platforms[i+1];m.position.set(p.x,p.y+1.45,p.z);scene.add(m);starMeshes.push(m)}
-  function resize(){const w=mount.clientWidth||800,h=mount.clientHeight||420;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
-  const ro=new ResizeObserver(resize);ro.observe(mount);resize();
-  function setHud(){$("#stars").textContent=stars;$("#checkpoint").textContent=`${Math.min(checkpoint+1,platforms.length)} / ${platforms.length}`;$("#best").textContent=read("gh3-obby-best",0)}
-  function respawn(){state.x=platforms[checkpoint].x;state.y=platforms[checkpoint].y+.5;state.z=platforms[checkpoint].z+1.3;vy=0;finished=false;$("#gameMessage").textContent="Back at checkpoint — keep going!"}
-  function restart(){checkpoint=0;stars=0;elapsed=0;respawn();setHud()}
-  function start(){if(running)return;running=true;last=performance.now();raf=requestAnimationFrame(loop)}
-  function stop(){running=false;cancelAnimationFrame(raf);Object.keys(keys).forEach(k=>keys[k]=false)}
-  function toggleCamera(){camFollow=!camFollow;$("#toggleCamera").textContent="Camera: "+(camFollow?"Follow":"Wide")}
-  function loop(now){if(!running)return;const dt=Math.min((now-last)/1000,.035);last=now;elapsed+=dt;
-    const forward=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),side=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
-    const speed=5.5;state.x+=side*speed*dt;state.z-=forward*speed*dt;
-    if((keys.Space||keys.KeyW&&keys.ShiftLeft)&&onGround){vy=8.5;onGround=false}
-    vy-=20*dt;state.y+=vy*dt;
-    onGround=false;
-    for(let i=0;i<platforms.length;i++){const p=platforms[i];const within=Math.abs(state.x-p.x)<p.w/2-.12&&Math.abs(state.z-p.z)<p.d/2-.12;const top=p.y+.28;if(within&&vy<=0&&state.y>=top-.12&&state.y<=top+.35){state.y=top;vy=0;onGround=true;if(i>checkpoint){checkpoint=i;$("#gameMessage").textContent=p.finish?"🏆 You reached the finish! Great job!":"Checkpoint reached — keep jumping!";setHud()}if(p.finish&&!finished){finished=true;const best=Math.max(read("gh3-obby-best",0),stars*100+Math.floor(elapsed));write("gh3-obby-best",best);$("#best").textContent=best;const sc=stars*100+Math.floor(elapsed);const scores=read("gh3-scores",[]);scores.push({score:sc});write("gh3-scores",scores.slice(-20));renderRanks();$("#gameMessage").textContent="🏆 You made it! Collect stars and try to beat your score."}}}
-    // Collect floating stars.
-    starMeshes.forEach((s,i)=>{s.rotation.y+=dt*1.7;s.rotation.x+=dt; if(s.visible&&avatar.position.distanceTo(s.position)<1.1){s.visible=false;stars++;setHud();$("#gameMessage").textContent="Star collected! +1 ⭐"}});
-    if(state.y< -5){respawn();setHud()}
-    avatar.position.set(state.x,state.y,state.z);avatar.rotation.y=Math.atan2(side||0,forward||1);avatar.position.y+=Math.sin(elapsed*9)*.025*(Math.abs(forward)+Math.abs(side)>0?1:0);
-    const target=camFollow?new THREE.Vector3(state.x+5,state.y+5.5,state.z+9):new THREE.Vector3(0,17,15);
-    camera.position.lerp(target,1-Math.pow(.001,dt));camera.lookAt(state.x,state.y+1,state.z-3);
-    renderer.render(scene,camera);raf=requestAnimationFrame(loop)
+  // Third-person obby controller inspired by familiar platform games.
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color("#87d8ff");
+  scene.fog=new THREE.Fog("#87d8ff",38,125);
+
+  const camera=new THREE.PerspectiveCamera(65,1,.1,220);
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.12;
+  mount.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xd9f5ff,0x47526e,2.15));
+  const sun=new THREE.DirectionalLight(0xffffff,3);
+  sun.position.set(-12,24,15);sun.castShadow=true;
+  sun.shadow.mapSize.set(1536,1536);
+  sun.shadow.camera.left=-32;sun.shadow.camera.right=32;
+  sun.shadow.camera.top=32;sun.shadow.camera.bottom=-32;
+  scene.add(sun);
+
+  const mat=(color,extra={})=>new THREE.MeshStandardMaterial({color,roughness:.72,...extra});
+  const box=(w,h,d,material,x,y,z,cast=true)=>{
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+    m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;scene.add(m);return m;
+  };
+  const platformMats=["#17b8ef","#8c55f6","#ffb52e","#38d98b","#f15eaa","#427bff"].map(c=>mat(c));
+  const platforms=[
+    {x:0,y:0,z:0,w:8,d:8,checkpoint:0},
+    {x:3,y:.9,z:-8,w:3.8,d:3.8,checkpoint:1},
+    {x:-2,y:1.8,z:-15,w:3.6,d:3.6,checkpoint:2},
+    {x:-5,y:2.7,z:-22,w:3.8,d:3.8,checkpoint:3},
+    {x:0,y:3.6,z:-29,w:3.8,d:3.8,checkpoint:4},
+    {x:5,y:4.5,z:-36,w:6,d:6,finish:true,checkpoint:5}
+  ];
+  platforms.forEach((p,i)=>{
+    box(p.w,.6,p.d,platformMats[i%platformMats.length],p.x,p.y,p.z);
+    box(p.w*.92,.12,p.d*.92,mat("#ffffff",{transparent:true,opacity:.16}),p.x,p.y+.36,p.z,false);
+    // Bright beveled-looking corner markers make each landing easier to read.
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      box(.16,.12,.16,mat("#ffffff"),p.x+sx*(p.w/2-.22),p.y+.38,p.z+sz*(p.d/2-.22),false);
+    }
+  });
+  // A few stepping stones and a striped moving obstacle section.
+  const movingPlatforms=[
+    {mesh:box(2.7,.45,2.7,mat("#ff6b55"),-1,1.2,-11.5),baseX:-1,baseZ:-11.5,phase:0},
+    {mesh:box(2.6,.45,2.6,mat("#ff6b55"),-3,2.2,-19),baseX:-3,baseZ:-19,phase:1.7}
+  ];
+  // Neon finish hoop.
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.25,.14,12,44),mat("#ffe66b",{emissive:"#d58c00",emissiveIntensity:.8}));
+  ring.position.set(5,6.4,-36);scene.add(ring);
+  const finishGlow=new THREE.PointLight("#ffdf62",2.5,12);finishGlow.position.set(5,6,-36);scene.add(finishGlow);
+
+  // Clouds, distant floating islands, and a floor far below the course.
+  for(let i=0;i<28;i++){
+    const cloud=new THREE.Group();
+    const x=Math.sin(i*7.3)*34,z=-i*2.8-5,y=5+Math.abs(Math.cos(i*2.2))*12;
+    for(let j=0;j<3;j++){
+      const puff=new THREE.Mesh(new THREE.SphereGeometry(.85+j*.12,10,8),mat("#ffffff"));
+      puff.position.set((j-1)*.8,(j%2)*.22,0);cloud.add(puff);
+    }
+    cloud.position.set(x,y,z);scene.add(cloud);
   }
-  function keyDown(e){keys[e.code]=true;if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code))e.preventDefault()}
+  for(let i=0;i<10;i++){
+    const x=(i%2?1:-1)*(12+(i%4)*4),z=-i*5-6;
+    box(4,.7,4,mat(i%2?"#4fc78b":"#6ca9e9"),x,-2,z,false);
+  }
+
+  // Blocky avatar with articulated limbs for a visible run/jump animation.
+  const avatar=new THREE.Group();scene.add(avatar);
+  const skin=mat("#f4bd8d"),shirt=mat("#18a0ff"),pants=mat("#273c67"),hair=mat("#59301e"),eyeMat=mat("#14263c");
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(.9,1.02,.5),shirt);torso.position.y=1.38;torso.castShadow=true;avatar.add(torso);
+  const head=new THREE.Mesh(new THREE.BoxGeometry(.67,.67,.65),skin);head.position.y=2.25;head.castShadow=true;avatar.add(head);
+  const hairMesh=new THREE.Mesh(new THREE.BoxGeometry(.7,.22,.68),hair);hairMesh.position.set(0,2.57,-.015);avatar.add(hairMesh);
+  const eyes=[];
+  for(const x of [-.16,.16]){
+    const eye=new THREE.Mesh(new THREE.BoxGeometry(.075,.08,.035),eyeMat);
+    eye.position.set(x,2.29,.337);avatar.add(eye);eyes.push(eye);
+  }
+  const limb=(w,h,d,material,x,y)=>{
+    const pivot=new THREE.Group();pivot.position.set(x,y,0);
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+    mesh.position.y=-h/2;mesh.castShadow=true;pivot.add(mesh);avatar.add(pivot);return pivot;
+  };
+  const leftLeg=limb(.34,.76,.38,pants,-.24,.91);
+  const rightLeg=limb(.34,.76,.38,pants,.24,.91);
+  const leftArm=limb(.27,.8,.31,skin,-.61,1.78);
+  const rightArm=limb(.27,.8,.31,skin,.61,1.78);
+
+  // Input state: keyboard, mouse/touch drag to orbit, and mobile buttons.
+  const keys={};let running=false,raf=0,last=0,elapsed=0,stars=0,checkpoint=0,camFollow=true,finished=false;
+  const state={x:0,y:.42,z:2.1,vx:0,vy:0,vz:0};
+  let grounded=false,jumpQueued=false,yaw=0,pitch=.24,dragging=false,lastPointerX=0,lastPointerY=0;
+  const starMeshes=[];
+  for(let i=0;i<5;i++){
+    const p=platforms[i+1];
+    const m=new THREE.Mesh(new THREE.OctahedronGeometry(.38),mat("#ffdf48",{emissive:"#a76d00",emissiveIntensity:.65}));
+    m.position.set(p.x,p.y+1.65,p.z);m.castShadow=true;scene.add(m);starMeshes.push(m);
+  }
+  const collected=new Set();
+  const resize=()=>{
+    const w=Math.max(1,mount.clientWidth||800),h=Math.max(1,mount.clientHeight||420);
+    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+  };
+  const ro=new ResizeObserver(resize);ro.observe(mount);resize();
+
+  function setHud(){
+    $("#stars").textContent=stars;
+    $("#checkpoint").textContent=`${Math.min(checkpoint+1,platforms.length)} / ${platforms.length}`;
+    $("#best").textContent=read("gh3-obby-best",0);
+  }
+  function respawn(){
+    const p=platforms[checkpoint];
+    state.x=p.x;state.y=p.y+.55;state.z=p.z+Math.min(p.d*.28,1.5);
+    state.vx=state.vy=state.vz=0;grounded=false;finished=false;
+    $("#gameMessage").textContent="Checkpoint respawn! Line up your next jump.";
+  }
+  function restart(){
+    checkpoint=0;stars=0;elapsed=0;collected.clear();
+    starMeshes.forEach(s=>s.visible=true);
+    respawn();setHud();
+  }
+  function start(){if(running)return;running=true;last=performance.now();raf=requestAnimationFrame(loop)}
+  function stop(){
+    running=false;cancelAnimationFrame(raf);
+    Object.keys(keys).forEach(k=>keys[k]=false);
+  }
+  function toggleCamera(){
+    camFollow=!camFollow;
+    $("#toggleCamera").textContent="Camera: "+(camFollow?"Follow":"Wide");
+  }
+  function keyDown(e){
+    if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code))e.preventDefault();
+    keys[e.code]=true;
+    if (e.code === "Space" && !e.repeat) jumpQueued = true;
+  }
   function keyUp(e){keys[e.code]=false}
+  function pointerDown(e){dragging=true;lastPointerX=e.clientX;lastPointerY=e.clientY;renderer.domElement.setPointerCapture?.(e.pointerId)}
+  function pointerMove(e){
+    if(!dragging)return;
+    const dx=e.clientX-lastPointerX,dy=e.clientY-lastPointerY;
+    lastPointerX=e.clientX;lastPointerY=e.clientY;
+    yaw-=dx*.006;pitch=Math.max(-.1,Math.min(.75,pitch+dy*.004));
+  }
+  function pointerUp(){dragging=false}
   window.addEventListener("keydown",keyDown);window.addEventListener("keyup",keyUp);
-  // Touch-friendly movement pads are added as buttons over the canvas.
-  const touch=document.createElement("div");touch.style.cssText="position:absolute;left:12px;bottom:12px;display:flex;gap:6px;z-index:2";
-  [["◀","ArrowLeft"],["▲","ArrowUp"],["▼","ArrowDown"],["▶","ArrowRight"]].forEach(([label,code])=>{const b=document.createElement("button");b.textContent=label;b.setAttribute("aria-label",label);b.style.cssText="width:42px;height:42px;border-radius:10px;border:1px solid #ffffff55;background:#092344bb;color:white;font-weight:900;font-size:18px;touch-action:none";b.addEventListener("pointerdown",e=>{e.preventDefault();keys[code]=true});["pointerup","pointerleave","pointercancel"].forEach(ev=>b.addEventListener(ev,()=>keys[code]=false));touch.appendChild(b)});
-  const jump=document.createElement("button");jump.textContent="JUMP";jump.style.cssText="position:absolute;right:12px;bottom:12px;width:66px;height:52px;border-radius:13px;border:1px solid #ffffff66;background:#008cffdd;color:white;font-weight:900;touch-action:none";jump.addEventListener("pointerdown",e=>{e.preventDefault();if(onGround){vy=8.5;onGround=false}});touch.appendChild(jump);mount.appendChild(touch);
-  setHud();drawInitial();
-  function drawInitial(){renderer.render(scene,camera)}
+  renderer.domElement.addEventListener("pointerdown",pointerDown);
+  renderer.domElement.addEventListener("pointermove",pointerMove);
+  renderer.domElement.addEventListener("pointerup",pointerUp);
+  renderer.domElement.addEventListener("pointercancel",pointerUp);
+
+  // Touch controls: hold to move, tap/hold jump.
+  const touch=document.createElement("div");
+  touch.style.cssText="position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:end;justify-content:space-between;gap:6px;z-index:3;pointer-events:none";
+  const pad=document.createElement("div");pad.style.cssText="display:grid;grid-template-columns:42px 42px 42px;grid-template-rows:42px 42px;gap:4px;pointer-events:auto";
+  const addPad=(label,code,col,row)=>{
+    const b=document.createElement("button");b.textContent=label;b.style.cssText="width:42px;height:42px;border-radius:10px;border:1px solid #ffffff66;background:#092344cc;color:white;font-weight:900;font-size:17px;touch-action:none";
+    b.style.gridColumn=col;b.style.gridRow=row;
+    b.addEventListener("pointerdown",e=>{e.preventDefault();keys[code]=true});
+    ["pointerup","pointerleave","pointercancel"].forEach(ev=>b.addEventListener(ev,()=>keys[code]=false));
+    pad.appendChild(b);
+  };
+  addPad("▲","KeyW","2","1");addPad("◀","KeyA","1","2");addPad("▼","KeyS","2","2");addPad("▶","KeyD","3","2");
+  const jump=document.createElement("button");jump.textContent="JUMP";jump.style.cssText="pointer-events:auto;width:72px;height:58px;border-radius:16px;border:1px solid #ffffff88;background:#008cffdd;color:white;font-weight:900;touch-action:none";
+  jump.addEventListener("pointerdown",e=>{e.preventDefault();jumpQueued=true});
+  touch.appendChild(pad);touch.appendChild(jump);mount.appendChild(touch);
+
+  function loop(now){
+    if(!running)return;
+    const dt=Math.min((now-last)/1000,.033);last=now;elapsed+=dt;
+    // Smooth, camera-relative Roblox-like controls.
+    const f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+    const r=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+    const inputLen=Math.hypot(f,r);
+    let moveX=0,moveZ=0;
+    if(inputLen>0){
+      const nf=f/inputLen,nr=r/inputLen;
+      moveX=nr*Math.cos(yaw)+nf*Math.sin(yaw);
+      moveZ=nr*Math.sin(yaw)-nf*Math.cos(yaw);
+    }
+    const maxSpeed=7.2,accel=grounded?25:10;
+    const targetVX=moveX*maxSpeed,targetVZ=moveZ*maxSpeed;
+    state.vx+= (targetVX-state.vx)*Math.min(1,accel*dt);
+    state.vz+= (targetVZ-state.vz)*Math.min(1,accel*dt);
+    if(inputLen===0){state.vx*=Math.pow(.0008,dt);state.vz*=Math.pow(.0008,dt)}
+    if(jumpQueued&&grounded){state.vy=9.4;grounded=false;$("#gameMessage").textContent="Jump! Keep moving in the air."}
+    jumpQueued=false;
+    state.vy-=23*dt;
+    const prevY=state.y;
+    state.x+=state.vx*dt;state.z+=state.vz*dt;state.y+=state.vy*dt;
+
+    // Platforms only catch the player while falling through their top surface.
+    grounded=false;
+    for(let i=0;i<platforms.length;i++){
+      const p=platforms[i],within=Math.abs(state.x-p.x)<p.w/2-.18&&Math.abs(state.z-p.z)<p.d/2-.18;
+      const top=p.y+.3;
+      if(within&&state.vy<=0&&prevY>=top-.02&&state.y<=top+.12){
+        state.y=top;state.vy=0;grounded=true;
+        if(i>checkpoint){checkpoint=i;$("#gameMessage").textContent=p.finish?"You reached the finish! 🎉":"Checkpoint saved! Keep going.";setHud()}
+        if(p.finish&&!finished){
+          finished=true;
+          const score=stars*100+Math.max(0,Math.floor(1000-elapsed));
+          const best=Math.max(read("gh3-obby-best",0),score);write("gh3-obby-best",best);
+          const saved=read("gh3-scores",[]);saved.push({score});write("gh3-scores",saved.slice(-20));
+          $("#best").textContent=best;renderRanks();
+          $("#gameMessage").textContent=`🏆 Obby complete! ${stars} stars collected. Press Restart to run it again.`;
+        }
+      }
+    }
+    // Moving red platforms sweep gently side-to-side; use them as extra stepping stones.
+    movingPlatforms.forEach((m,i)=>{
+      const sway=Math.sin(elapsed*1.25+m.phase)*1.7;
+      m.mesh.position.x=m.baseX+sway;
+      const p=m.mesh.position,top=p.y+.225;
+      if(Math.abs(state.x-p.x)<1.25&&Math.abs(state.z-p.z)<1.25&&state.vy<=0&&prevY>=top-.02&&state.y<=top+.12){
+        state.y=top;state.vy=0;grounded=true;
+      }
+    });
+    // Collectible stars bob and rotate.
+    starMeshes.forEach((s,i)=>{
+      s.rotation.y+=dt*1.8;s.rotation.x+=dt;
+      s.position.y=platforms[i+1].y+1.65+Math.sin(elapsed*2+i)*.15;
+      if(s.visible&&Math.hypot(state.x-s.position.x,state.y+1.5-s.position.y,state.z-s.position.z)<1.35){
+        s.visible=false;collected.add(i);stars++;setHud();$("#gameMessage").textContent="Star collected! ⭐ +1";
+      }
+    });
+    if(state.y< -8){respawn();setHud()}
+    // Face the direction of travel and animate arms/legs.
+    const moving=Math.hypot(state.vx,state.vz)>.45;
+    if(moving)avatar.rotation.y=Math.atan2(state.vx,state.vz);
+    const swing=moving?Math.sin(elapsed*13)*.62:0;
+    leftLeg.rotation.x=swing;rightLeg.rotation.x=-swing;
+    leftArm.rotation.x=-swing*.8;rightArm.rotation.x=swing*.8;
+    torso.position.y=1.38+(grounded&&moving?Math.abs(Math.sin(elapsed*13))*.055:0);
+    avatar.position.set(state.x,state.y, state.z);
+    // Follow camera: drag the game view to orbit around your avatar.
+    const distance=camFollow?10:19;
+    const target=new THREE.Vector3(
+      state.x+Math.sin(yaw)*distance*Math.cos(pitch),
+      state.y+3.1+Math.sin(pitch)*distance,
+      state.z+Math.cos(yaw)*distance*Math.cos(pitch)
+    );
+    camera.position.lerp(target,1-Math.pow(.0005,dt));
+    camera.lookAt(state.x,state.y+1.15,state.z);
+    ring.rotation.y=Math.sin(elapsed)*.12;
+    renderer.render(scene,camera);
+    raf=requestAnimationFrame(loop);
+  }
+  setHud();renderer.render(scene,camera);
   return {start,stop,restart,toggleCamera};
 }
 </script>
