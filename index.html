@@ -84,7 +84,7 @@ main{padding:14px 16px;min-width:0}.hero{min-height:265px;position:relative;over
     <section class="panel ranks-panel"><div class="panel-head"><h2>🏆 Leaderboard</h2><button class="link" data-view="leaderboard">See all →</button></div><ol class="ranks" id="leaderboard"></ol><p class="control-hint">Demo scores are stored in this browser.</p></section>
   </aside>
 </div>
-<div class="modal hidden" id="gameModal" role="dialog" aria-modal="true" aria-labelledby="gameTitle"><div class="modal-box"><div class="modal-head"><div><span class="kicker">GAMEHUB 3D ARCADE</span><h2 id="gameTitle">3D Obby: Sky Islands</h2></div><button class="close" id="closeGame" aria-label="Close game">✕</button></div><div class="game-info" id="gameInfo"><span>⭐ Stars: <b id="stars">0</b></span><span>🏁 Checkpoint: <b id="checkpoint">1 / 5</b></span><span>🏆 Best: <b id="best">0</b></span></div><div id="threeMount"></div><iframe id="racerFrame" class="hidden" title="Speed Racer" allow="fullscreen"></iframe><div class="game-help"><p id="gameMessage">Reach the glowing finish platform. Don't fall!</p><div id="obbyBtns"><button class="btn" id="restartGame">↻ Restart</button> <button class="btn" id="toggleCamera" style="background:#1a2e48">Camera: Follow</button></div></div><p class="control-hint" id="obbyHint">Controls: WASD / arrow keys to move · Space to jump · Mobile: use the on-screen controls. Requires internet to load the 3D engine.</p></div></div>
+<div class="modal hidden" id="gameModal" role="dialog" aria-modal="true" aria-labelledby="gameTitle"><div class="modal-box"><div class="modal-head"><div><span class="kicker">GAMEHUB 3D ARCADE</span><h2 id="gameTitle">3D Obby: Sky Islands</h2></div><button class="close" id="closeGame" aria-label="Close game">✕</button></div><div class="game-info" id="gameInfo"><span>⭐ Stars: <b id="stars">0</b></span><span>🏁 Checkpoint: <b id="checkpoint">1 / 5</b></span><span>🏆 Best: <b id="best">0</b></span></div><div id="threeMount"></div><iframe id="racerFrame" class="hidden" title="Speed Racer" allow="fullscreen"></iframe><div class="game-help"><p id="gameMessage">Reach the glowing finish platform. Don't fall!</p><div id="obbyBtns"><button class="btn" id="restartGame">↻ Restart</button> <button class="btn" id="toggleCamera" style="background:#1a2e48">Camera: Follow</button></div></div><p class="control-hint" id="obbyHint">Controls: WASD / arrow keys to move · Space to jump (press again in the air to double jump) · Mobile: use the on-screen controls. Requires internet to load the 3D engine.</p></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -210,7 +210,7 @@ function close3D(){if(threeGame)threeGame.stop();$("#racerFrame").srcdoc="";$("#
 function createObby(THREE,mount){
   // Third-person obby controller inspired by familiar platform games.
   const scene=new THREE.Scene();
-  scene.background=new THREE.Color("#87d8ff");
+  {const cv=document.createElement("canvas");cv.width=2;cv.height=256;const cx=cv.getContext("2d"),gr=cx.createLinearGradient(0,0,0,256);gr.addColorStop(0,"#2b6cff");gr.addColorStop(.55,"#7fd0ff");gr.addColorStop(1,"#ffe6b3");cx.fillStyle=gr;cx.fillRect(0,0,2,256);const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;scene.background=tex}
   scene.fog=new THREE.Fog("#87d8ff",38,125);
 
   const camera=new THREE.PerspectiveCamera(65,1,.1,220);
@@ -229,7 +229,7 @@ function createObby(THREE,mount){
   sun.shadow.mapSize.set(1536,1536);
   sun.shadow.camera.left=-32;sun.shadow.camera.right=32;
   sun.shadow.camera.top=32;sun.shadow.camera.bottom=-32;
-  scene.add(sun);
+  scene.add(sun);scene.add(sun.target);
 
   const mat=(color,extra={})=>new THREE.MeshStandardMaterial({color,roughness:.72,...extra});
   const box=(w,h,d,material,x,y,z,cast=true)=>{
@@ -237,34 +237,35 @@ function createObby(THREE,mount){
     m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;scene.add(m);return m;
   };
   const platformMats=["#17b8ef","#8c55f6","#ffb52e","#38d98b","#f15eaa","#427bff"].map(c=>mat(c));
-  const platforms=[
-    {x:0,y:0,z:0,w:8,d:8,checkpoint:0},
-    {x:3,y:.9,z:-8,w:3.8,d:3.8,checkpoint:1},
-    {x:-2,y:1.8,z:-15,w:3.6,d:3.6,checkpoint:2},
-    {x:-5,y:2.7,z:-22,w:3.8,d:3.8,checkpoint:3},
-    {x:0,y:3.6,z:-29,w:3.8,d:3.8,checkpoint:4},
-    {x:5,y:4.5,z:-36,w:6,d:6,finish:true,checkpoint:5}
-  ];
+  const crumbleMat=mat("#c98a5a"),bounceMat=mat("#2ee6a6",{emissive:"#0a8f66",emissiveIntensity:.6}),movingMat=mat("#ff6b55");
+  const N=18,platforms=[{x:0,y:0,z:0,w:8,d:8,cp:true}];
+  for(let i=1;i<=N;i++){
+    const fin=i===N,k=i%6,prev=platforms[i-1],w=fin?7:Math.max(2.9,4.2-i*.06);
+    platforms.push({x:fin?0:Math.sin(i*1.35)*3.5,y:prev.y+(fin?.6:.55),z:prev.z-(fin?9:7),w,d:w,finish:fin,moving:!fin&&k===2,crumble:!fin&&k===4,bounce:!fin&&i===5,spin:!fin&&k===0,cp:i%3===0||fin,star:i%2===1});
+  }
   platforms.forEach((p,i)=>{
-    box(p.w,.6,p.d,platformMats[i%platformMats.length],p.x,p.y,p.z);
-    box(p.w*.92,.12,p.d*.92,mat("#ffffff",{transparent:true,opacity:.16}),p.x,p.y+.36,p.z,false);
-    // Bright beveled-looking corner markers make each landing easier to read.
-    for(const sx of [-1,1])for(const sz of [-1,1]){
-      box(.16,.12,.16,mat("#ffffff"),p.x+sx*(p.w/2-.22),p.y+.38,p.z+sz*(p.d/2-.22),false);
-    }
+    p.i=i;p.bx=p.x;p.dx=0;p.sp=1.2+(i%3)*.15;p.ph=i;p.amp=1.7;
+    const g=new THREE.Group();g.position.set(p.x,p.y,p.z);scene.add(g);p.mesh=g;
+    const m=p.crumble?crumbleMat:p.bounce?bounceMat:p.moving?movingMat:platformMats[i%platformMats.length];
+    const base=new THREE.Mesh(new THREE.BoxGeometry(p.w,.6,p.d),m);base.castShadow=base.receiveShadow=true;g.add(base);
+    const top=new THREE.Mesh(new THREE.BoxGeometry(p.w*.92,.12,p.d*.92),mat("#ffffff",{transparent:true,opacity:.16}));top.position.y=.36;g.add(top);
+    for(const sx of [-1,1])for(const sz of [-1,1]){const c=new THREE.Mesh(new THREE.BoxGeometry(.16,.12,.16),mat("#ffffff"));c.position.set(sx*(p.w/2-.22),.38,sz*(p.d/2-.22));g.add(c)}
+    if(p.cp&&i>0){const pole=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,1.8,6),mat("#eeeeee"));pole.position.set(p.w/2-.4,1.2,-(p.d/2-.4));g.add(pole);const flag=new THREE.Mesh(new THREE.BoxGeometry(.7,.4,.05),mat("#25ccff",{emissive:"#0a7fa8",emissiveIntensity:.6}));flag.position.set(p.w/2-.05,1.9,-(p.d/2-.4));g.add(flag)}
+    if(p.spin){const bar=new THREE.Group();bar.position.y=.65;const bm=new THREE.Mesh(new THREE.BoxGeometry(p.w*1.1,.4,.4),mat("#ff3b4f"));bm.castShadow=true;bar.add(bm);g.add(bar);p.bar=bar}
   });
-  // A few stepping stones and a striped moving obstacle section.
-  const movingPlatforms=[
-    {mesh:box(2.7,.45,2.7,mat("#ff6b55"),-1,1.2,-11.5),baseX:-1,baseZ:-11.5,phase:0},
-    {mesh:box(2.6,.45,2.6,mat("#ff6b55"),-3,2.2,-19),baseX:-3,baseZ:-19,phase:1.7}
-  ];
+  const movingPlatforms=[];
+  const lava=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:"#ff5a1f",emissive:"#ff3d00",emissiveIntensity:.9,roughness:1}));
+  lava.rotation.x=-Math.PI/2;lava.position.set(0,-6.5,-60);scene.add(lava);
+  const confetti=[];let hudTick=0,runT=0,standing=null,coyote=0,airJumps=1,ac=null;
+  const beep=(f,d=.08,type="square")=>{try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),gn=ac.createGain();o.type=type;o.frequency.value=f;gn.gain.value=.05;o.connect(gn);gn.connect(ac.destination);o.start();gn.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+d);o.stop(ac.currentTime+d)}catch(e){}};
+  function burst(x,y,z){for(let i=0;i<80;i++){const m=new THREE.Mesh(new THREE.BoxGeometry(.14,.14,.14),mat(["#ffdf48","#25ccff","#ff3b4f","#38d98b"][i%4]));m.position.set(x,y,z);scene.add(m);confetti.push({m,life:2.5,v:new THREE.Vector3((Math.random()-.5)*9,Math.random()*9+3,(Math.random()-.5)*9)})}}
   // Neon finish hoop.
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.25,.14,12,44),mat("#ffe66b",{emissive:"#d58c00",emissiveIntensity:.8}));
-  ring.position.set(5,6.4,-36);scene.add(ring);
-  const finishGlow=new THREE.PointLight("#ffdf62",2.5,12);finishGlow.position.set(5,6,-36);scene.add(finishGlow);
+  const FP=platforms[platforms.length-1];ring.position.set(FP.x,FP.y+2.1,FP.z);scene.add(ring);
+  const finishGlow=new THREE.PointLight("#ffdf62",2.5,12);finishGlow.position.set(FP.x,FP.y+1.8,FP.z);scene.add(finishGlow);
 
   // Clouds, distant floating islands, and a floor far below the course.
-  for(let i=0;i<28;i++){
+  for(let i=0;i<64;i++){
     const cloud=new THREE.Group();
     const x=Math.sin(i*7.3)*34,z=-i*2.8-5,y=5+Math.abs(Math.cos(i*2.2))*12;
     for(let j=0;j<3;j++){
@@ -273,7 +274,7 @@ function createObby(THREE,mount){
     }
     cloud.position.set(x,y,z);scene.add(cloud);
   }
-  for(let i=0;i<10;i++){
+  for(let i=0;i<26;i++){
     const x=(i%2?1:-1)*(12+(i%4)*4),z=-i*5-6;
     box(4,.7,4,mat(i%2?"#4fc78b":"#6ca9e9"),x,-2,z,false);
   }
@@ -341,10 +342,9 @@ function createObby(THREE,mount){
   const state={x:0,y:.42,z:2.1,vx:0,vy:0,vz:0};
   let grounded=false,jumpQueued=false,yaw=0,pitch=.24,dragging=false,lastPointerX=0,lastPointerY=0;
   const starMeshes=[];
-  for(let i=0;i<5;i++){
-    const p=platforms[i+1];
+  for(let i=1;i<platforms.length;i++){const p=platforms[i];if(!p.star)continue;
     const m=new THREE.Mesh(new THREE.OctahedronGeometry(.38),mat("#ffdf48",{emissive:"#a76d00",emissiveIntensity:.65}));
-    m.position.set(p.x,p.y+1.65,p.z);m.castShadow=true;scene.add(m);starMeshes.push(m);
+    m.position.set(p.x,p.y+1.65,p.z);m.castShadow=true;scene.add(m);m.userData.p=p;starMeshes.push(m);
   }
   const collected=new Set();
   const resize=()=>{
@@ -355,7 +355,7 @@ function createObby(THREE,mount){
 
   function setHud(){
     $("#stars").textContent=stars;
-    $("#checkpoint").textContent=`${Math.min(checkpoint+1,platforms.length)} / ${platforms.length}`;
+    $("#checkpoint").textContent=`${checkpoint} / ${platforms.length-1} · ${Math.floor(runT/60)}:${String(Math.floor(runT%60)).padStart(2,"0")}`;
     $("#best").textContent=read("gh3-obby-best",0);
   }
   function respawn(){
@@ -365,7 +365,7 @@ function createObby(THREE,mount){
     $("#gameMessage").textContent="Checkpoint respawn! Line up your next jump.";
   }
   function restart(){
-    checkpoint=0;stars=0;elapsed=0;collected.clear();
+    checkpoint=0;stars=0;elapsed=0;runT=0;collected.clear();platforms.forEach(p=>{p.gone=false;p.hit=0;p.mesh.visible=true});
     starMeshes.forEach(s=>s.visible=true);
     respawn();setHud();
   }
@@ -378,7 +378,7 @@ function createObby(THREE,mount){
     camFollow=!camFollow;
     $("#toggleCamera").textContent="Camera: "+(camFollow?"Follow":"Wide");
   }
-  function keyDown(e){
+  function keyDown(e){if(!running)return;
     if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code))e.preventDefault();
     keys[e.code]=true;
     if (e.code === "Space" && !e.repeat) jumpQueued = true;
@@ -424,31 +424,38 @@ function createObby(THREE,mount){
     let moveX=0,moveZ=0;
     if(inputLen>0){
       const nf=f/inputLen,nr=r/inputLen;
-      moveX=nr*Math.cos(yaw)+nf*Math.sin(yaw);
-      moveZ=nr*Math.sin(yaw)-nf*Math.cos(yaw);
+      moveX=nr*Math.cos(yaw)-nf*Math.sin(yaw);
+      moveZ=-nr*Math.sin(yaw)-nf*Math.cos(yaw);
     }
     const maxSpeed=7.2,accel=grounded?25:10;
     const targetVX=moveX*maxSpeed,targetVZ=moveZ*maxSpeed;
     state.vx+= (targetVX-state.vx)*Math.min(1,accel*dt);
     state.vz+= (targetVZ-state.vz)*Math.min(1,accel*dt);
     if(inputLen===0){state.vx*=Math.pow(.0008,dt);state.vz*=Math.pow(.0008,dt)}
-    if(jumpQueued&&grounded){state.vy=9.4;grounded=false;$("#gameMessage").textContent="Jump! Keep moving in the air."}
+    if(jumpQueued){if(grounded||coyote>0){state.vy=9.4;grounded=false;coyote=0;beep(520,.08)}else if(airJumps>0){airJumps--;state.vy=8.6;beep(700,.08);$("#gameMessage").textContent="Double jump!"}}
     jumpQueued=false;
     state.vy-=23*dt;
     const prevY=state.y;
     state.x+=state.vx*dt;state.z+=state.vz*dt;state.y+=state.vy*dt;
 
+    platforms.forEach(p=>{p.dx=0;
+      if(p.moving){const nx=p.bx+Math.sin(elapsed*p.sp+p.ph)*p.amp;p.dx=nx-p.x;p.x=nx;p.mesh.position.x=nx}
+      if(p.crumble){if(p.hit&&!p.gone&&elapsed>p.hit){p.gone=true;p.back=elapsed+2.6;p.mesh.visible=false;beep(200,.15,"sawtooth")}
+        if(p.gone&&elapsed>p.back){p.gone=false;p.hit=0;p.mesh.visible=true}
+        p.mesh.position.x=p.x+(p.hit&&!p.gone?Math.sin(elapsed*60)*.05:0)}
+      if(p.bar)p.bar.rotation.y=elapsed*(1.6+p.i*.04);});
+    if(standing)state.x+=standing.dx;standing=null;
     // Platforms only catch the player while falling through their top surface.
     grounded=false;
     for(let i=0;i<platforms.length;i++){
-      const p=platforms[i],within=Math.abs(state.x-p.x)<p.w/2-.18&&Math.abs(state.z-p.z)<p.d/2-.18;
+      const p=platforms[i],within=!p.gone&&Math.abs(state.x-p.x)<p.w/2-.18&&Math.abs(state.z-p.z)<p.d/2-.18;
       const top=p.y+.3;
       if(within&&state.vy<=0&&prevY>=top-.02&&state.y<=top+.12){
         state.y=top;state.vy=0;grounded=true;
-        if(i>checkpoint){checkpoint=i;$("#gameMessage").textContent=p.finish?"You reached the finish! 🎉":"Checkpoint saved! Keep going.";setHud()}
+        standing=p;if(p.bounce){state.vy=17;grounded=false;beep(330,.12,"triangle")}if(p.crumble&&!p.hit)p.hit=elapsed+.65;if(p.cp&&i>checkpoint){checkpoint=i;beep(660,.1,"triangle");$("#gameMessage").textContent=p.finish?"You reached the finish! 🎉":"Checkpoint saved! Keep going.";setHud()}
         if(p.finish&&!finished){
           finished=true;
-          const score=stars*100+Math.max(0,Math.floor(1000-elapsed));
+          burst(p.x,p.y+1.5,p.z);[523,659,784,1046].forEach((f,k)=>setTimeout(()=>beep(f,.2,"triangle"),k*140));const score=stars*100+Math.max(0,Math.floor(3000-runT*5));
           const best=Math.max(read("gh3-obby-best",0),score);write("gh3-obby-best",best);
           const saved=read("gh3-scores",[]);saved.push({score});write("gh3-scores",saved.slice(-20));
           $("#best").textContent=best;renderRanks();
@@ -465,15 +472,18 @@ function createObby(THREE,mount){
         state.y=top;state.vy=0;grounded=true;
       }
     });
+    if(grounded){coyote=.12;airJumps=1}else coyote-=dt;
     // Collectible stars bob and rotate.
     starMeshes.forEach((s,i)=>{
       s.rotation.y+=dt*1.8;s.rotation.x+=dt;
-      s.position.y=platforms[i+1].y+1.65+Math.sin(elapsed*2+i)*.15;
+      {const sp=s.userData.p;s.position.set(sp.x,sp.y+1.65+Math.sin(elapsed*2+i)*.15,sp.z)}
       if(s.visible&&Math.hypot(state.x-s.position.x,state.y+1.5-s.position.y,state.z-s.position.z)<1.35){
-        s.visible=false;collected.add(i);stars++;setHud();$("#gameMessage").textContent="Star collected! ⭐ +1";
+        s.visible=false;collected.add(i);stars++;beep(880,.07);setTimeout(()=>beep(1175,.09),70);setHud();$("#gameMessage").textContent="Star collected! ⭐ +1";
       }
     });
-    if(state.y< -8){respawn();setHud()}
+    platforms.forEach(p=>{if(p.bar&&!p.gone){const a=p.bar.rotation.y,dx=state.x-p.x,dz=state.z-p.z,al=dx*Math.cos(a)-dz*Math.sin(a),pe=dx*Math.sin(a)+dz*Math.cos(a);
+      if(Math.abs(al)<p.w*.55&&Math.abs(pe)<.4&&state.y<p.y+.9&&state.y>p.y-.6){$("#gameMessage").textContent="Ouch! Spinning bar 💥";beep(150,.2,"sawtooth");respawn();setHud()}}});
+    if(state.y< -8){beep(140,.25,"sawtooth");respawn();setHud()}
     // Face the direction of travel and animate arms/legs.
     const moving=Math.hypot(state.vx,state.vz)>.45;
     if(moving)avatar.rotation.y=Math.atan2(state.vx,state.vz);
@@ -492,6 +502,9 @@ function createObby(THREE,mount){
     camera.position.lerp(target,1-Math.pow(.0005,dt));
     camera.lookAt(state.x,state.y+1.15,state.z);
     ring.rotation.y=Math.sin(elapsed)*.12;
+    if(!finished)runT+=dt;if(Math.floor(runT*4)!==hudTick){hudTick=Math.floor(runT*4);setHud()}
+    sun.position.set(state.x-12,state.y+24,state.z+15);sun.target.position.set(state.x,state.y,state.z);sun.target.updateMatrixWorld();
+    confetti.forEach(c=>{if(c.life>0){c.v.y-=14*dt;c.m.position.addScaledVector(c.v,dt);c.m.rotation.x+=dt*6;c.life-=dt;if(c.life<=0)c.m.visible=false}});
     renderer.render(scene,camera);
     raf=requestAnimationFrame(loop);
   }
