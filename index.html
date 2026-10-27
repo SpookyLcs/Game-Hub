@@ -214,14 +214,49 @@ function createObby(THREE,mount){
 
   // Blocky avatar with articulated limbs for a visible run/jump animation.
   const avatar=new THREE.Group();scene.add(avatar);
-  const skin=mat("#f4bd8d"),shirt=mat("#18a0ff"),pants=mat("#273c67"),hair=mat("#59301e"),eyeMat=mat("#14263c");
+  // Use the saved Avatar Creator settings so the player's customized look carries into the obby.
+  const savedAvatar=read("gh-avatar",{});
+  const skin=mat(savedAvatar.skin||"#f4bd8d"),shirt=mat(savedAvatar.shirt||"#18a0ff"),pants=mat(savedAvatar.pants||"#273c67"),hair=mat("#39251e"),eyeMat=mat("#14263c");
+  if(savedAvatar.hair==="blonde")hair.color.set("#f5ce65");
+  else if(savedAvatar.hair==="pink")hair.color.set("#ff83c7");
   const torso=new THREE.Mesh(new THREE.BoxGeometry(.9,1.02,.5),shirt);torso.position.y=1.38;torso.castShadow=true;avatar.add(torso);
   const head=new THREE.Mesh(new THREE.BoxGeometry(.67,.67,.65),skin);head.position.y=2.25;head.castShadow=true;avatar.add(head);
-  const hairMesh=new THREE.Mesh(new THREE.BoxGeometry(.7,.22,.68),hair);hairMesh.position.set(0,2.57,-.015);avatar.add(hairMesh);
+  if(savedAvatar.hair!=="none"){
+    const hairGeo=savedAvatar.hair==="long"?new THREE.BoxGeometry(.73,.44,.69):savedAvatar.hair==="spiky"?new THREE.BoxGeometry(.7,.28,.68):new THREE.BoxGeometry(.7,.22,.68);
+    const hairMesh=new THREE.Mesh(hairGeo,hair);hairMesh.position.set(0,savedAvatar.hair==="long"?2.48:savedAvatar.hair==="spiky"?2.61:2.57,-.015);avatar.add(hairMesh);
+    if(savedAvatar.hair==="long"){const backHair=new THREE.Mesh(new THREE.BoxGeometry(.73,.48,.22),hair);backHair.position.set(0,2.22,-.29);avatar.add(backHair);}
+    if(savedAvatar.hair==="spiky")for(let i=-1;i<=1;i++){const spike=new THREE.Mesh(new THREE.ConeGeometry(.13,.27,4),hair);spike.position.set(i*.19,2.77,-.01);avatar.add(spike);}
+  }
+  // Small blocky face with expression variants from the creator.
+  const face=savedAvatar.face||"• •";
   const eyes=[];
   for(const x of [-.16,.16]){
     const eye=new THREE.Mesh(new THREE.BoxGeometry(.075,.08,.035),eyeMat);
-    eye.position.set(x,2.29,.337);avatar.add(eye);eyes.push(eye);
+    eye.position.set(x,2.29,.337);
+    if(face==="× ×"){eye.rotation.z=Math.PI/4;eye.scale.set(.8,1.2,1)}
+    if(face==="^ ^"){eye.rotation.z=x<0?-.25:.25;eye.position.y=2.31}
+    if(face==="¬ ¬"){eye.scale.y=.45;eye.position.y=2.3}
+    if(face==="◕ ◕")eye.scale.set(1.25,1.25,1);
+    avatar.add(eye);eyes.push(eye);
+  }
+  if(face==="◕ ◕"||face==="^ ^"){
+    const smile=new THREE.Mesh(new THREE.BoxGeometry(.18,.035,.025),mat("#7d342b"));smile.position.set(0,2.16,.34);avatar.add(smile);
+  }
+  // Accessories selected in Avatar Creator.
+  const accessory=savedAvatar.accessory||"";
+  if(accessory==="🕶️"){
+    const glasses=new THREE.Mesh(new THREE.BoxGeometry(.47,.12,.055),mat("#172033"));glasses.position.set(0,2.31,.375);avatar.add(glasses);
+    for(const x of [-.25,.25]){const lens=new THREE.Mesh(new THREE.BoxGeometry(.17,.1,.06),mat("#477a9d",{metalness:.2,roughness:.25}));lens.position.set(x,2.31,.402);avatar.add(lens);}
+  }else if(accessory==="👑"){
+    const crown=new THREE.Mesh(new THREE.CylinderGeometry(.23,.3,.22,5),mat("#ffd447",{metalness:.35,roughness:.35}));crown.position.set(0,2.72,0);avatar.add(crown);
+  }else if(accessory==="🧢"){
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(.75,.12,.72),mat("#3978e8"));cap.position.set(0,2.64,.02);avatar.add(cap);
+    const brim=new THREE.Mesh(new THREE.BoxGeometry(.48,.055,.25),mat("#2856a7"));brim.position.set(0,2.59,.31);avatar.add(brim);
+  }else if(accessory==="🎧"){
+    const band=new THREE.Mesh(new THREE.TorusGeometry(.37,.055,8,20,Math.PI),mat("#242b3b"));band.rotation.x=Math.PI/2;band.position.set(0,2.48,0);avatar.add(band);
+    for(const x of [-.36,.36]){const cup=new THREE.Mesh(new THREE.BoxGeometry(.12,.24,.13),mat("#242b3b"));cup.position.set(x,2.34,0);avatar.add(cup);}
+  }else if(accessory==="✨"){
+    const sparkle=new THREE.Mesh(new THREE.OctahedronGeometry(.16),mat("#ffe66b",{emissive:"#b98900",emissiveIntensity:.4}));sparkle.position.set(.48,2.65,0);avatar.add(sparkle);
   }
   const limb=(w,h,d,material,x,y)=>{
     const pivot=new THREE.Group();pivot.position.set(x,y,0);
@@ -230,8 +265,10 @@ function createObby(THREE,mount){
   };
   const leftLeg=limb(.34,.76,.38,pants,-.24,.91);
   const rightLeg=limb(.34,.76,.38,pants,.24,.91);
-  const leftArm=limb(.27,.8,.31,skin,-.61,1.78);
-  const rightArm=limb(.27,.8,.31,skin,.61,1.78);
+  // Shirt-colored upper arms with skin-colored block hands, matching the creator preview.
+  const leftArm=limb(.27,.68,.31,shirt,-.61,1.84);
+  const rightArm=limb(.27,.68,.31,shirt,.61,1.84);
+  for(const x of [-.61,.61]){const hand=new THREE.Mesh(new THREE.BoxGeometry(.27,.2,.31),skin);hand.position.set(x,1.39,0);hand.castShadow=true;avatar.add(hand);}
 
   // Input state: keyboard, mouse/touch drag to orbit, and mobile buttons.
   const keys={};let running=false,raf=0,last=0,elapsed=0,stars=0,checkpoint=0,camFollow=true,finished=false;
